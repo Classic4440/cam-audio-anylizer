@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "LANES",
+      "hasCanvas": false,
+      "bodyTextLen": 307,
+      "bodyTextHash": "af20b9692d8552fde5528364181f044259e05cfa2be0632ee56c6d89538084b6",
+      "bodyTextPrefix": "LANES Producer playlist AUDIO ANALYZER Drop a track. Watch the a",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "LANES",
+      "hasCanvas": false,
+      "bodyTextLen": 289,
+      "bodyTextHash": "091caf84d3a0ecf7baa873eff2beca50b5ba6a4af00a56955c5b0689a284a277",
+      "bodyTextPrefix": "LANES AUDIO ANALYZER Drop a track. Watch the arrangement write i",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
