@@ -170,7 +170,15 @@ export default defineConfig(({ command, isPreview }) => ({
     ...(command === "build" || isPreview
       ? [
           nitro({
-            preset: "vercel",
+            // Deploy target. Vercel by default; Cloudflare Workers builds set
+            // WORKERS_CI/CF_PAGES automatically, or force with NITRO_PRESET.
+            preset:
+              process.env.NITRO_PRESET ??
+              (process.env.WORKERS_CI || process.env.CF_PAGES
+                ? "cloudflare_module"
+                : "vercel"),
+            // Keep the existing Worker (cam-audio-anylizer.<account>.workers.dev) on redeploys.
+            cloudflare: { wrangler: { name: "cam-audio-anylizer" } },
             // Auto-registers server/middleware/* (the PWA install page +
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { getEngine } from "@/lib/audio/engine";
+import { getTimelineEngine } from "@/lib/daw/timeline-engine";
 
 export function Spectrum({ active }: { active: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -23,7 +23,7 @@ export function Spectrum({ active }: { active: boolean }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      if (active) getEngine().getMasterSpectrum(bins);
+      if (active) getTimelineEngine().getMasterSpectrum(bins);
       else bins.fill(0);
 
       const n = 96;

@@ -1,146 +1,134 @@
-import { Pause, Play, Square, Volume2, ZoomIn, ZoomOut } from "lucide-react";
+import { Pause, Play, Square, Volume2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { formatBars, formatClock } from "@/lib/audio/format";
-import type { AnalysisResult } from "@/lib/audio/types";
+import { formatClock } from "@/lib/audio/format";
+import { formatPosition } from "@/lib/daw/timeline-math";
+import type { Project } from "@/lib/daw/types";
+
+const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const KEYS = NOTES.flatMap((n) => [`${n} major`, `${n} minor`]);
 
 export function Transport({
-  analysis,
+  project,
   playing,
   currentTime,
-  volume,
-  pxPerSec,
+  duration,
   onPlayPause,
   onStop,
   onSeek,
-  onVolume,
-  onZoom,
-  onClose,
+  onMasterVolume,
+  onBpm,
+  onKey,
+  onDownbeat,
 }: {
-  analysis: AnalysisResult;
+  project: Project;
   playing: boolean;
   currentTime: number;
-  volume: number;
-  pxPerSec: number;
+  duration: number;
   onPlayPause: () => void;
   onStop: () => void;
   onSeek: (t: number) => void;
-  onVolume: (v: number) => void;
-  onZoom: (px: number) => void;
-  onClose: () => void;
+  onMasterVolume: (v: number) => void;
+  onBpm: (bpm: number) => void;
+  onKey: (key: string, mode: "major" | "minor") => void;
+  onDownbeat: () => void;
 }) {
-  const progress = analysis.duration > 0 ? currentTime / analysis.duration : 0;
-  const chord =
-    analysis.chords.find((c) => currentTime >= c.start && currentTime < c.start + c.duration)?.name ??
-    "—";
+  const [bpmText, setBpmText] = useState(String(project.bpm));
+  useEffect(() => setBpmText(String(project.bpm)), [project.bpm]);
+  const progress = duration > 0 ? currentTime / duration : 0;
+  const commitBpm = () => {
+    const v = Number(bpmText);
+    if (Number.isFinite(v) && v >= 30 && v <= 300) onBpm(v);
+    else setBpmText(String(project.bpm));
+  };
 
   return (
-    <div className="flex flex-col gap-3 border-b border-border bg-background px-4 py-3 md:px-6">
+    <div className="flex flex-col gap-2 border-b border-border bg-background px-3 py-2.5 md:px-5">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">
-          <Button
-            type="button"
-            size="icon"
-            aria-label={playing ? "Pause" : "Play"}
-            onClick={onPlayPause}
-          >
+          <Button type="button" size="icon" aria-label={playing ? "Pause (Space)" : "Play (Space)"} onClick={onPlayPause}>
             {playing ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
           </Button>
           <Button type="button" size="icon" variant="secondary" aria-label="Stop" onClick={onStop}>
             <Square className="size-3 fill-current" />
           </Button>
         </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="truncate font-display text-sm font-semibold tracking-tight text-foreground">
-              {analysis.fileName}
-            </p>
-            <button
-              type="button"
-              onClick={onClose}
-              className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-            >
-              New track
-            </button>
-          </div>
+        <div className="min-w-[8rem] flex-1">
           <button
             type="button"
-            className="mt-2 block h-1.5 w-full overflow-hidden rounded-full bg-muted"
+            className="block h-1.5 w-full overflow-hidden rounded-full bg-muted"
             aria-label="Seek"
             onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const p = (e.clientX - rect.left) / rect.width;
-              onSeek(p * analysis.duration);
+              const r = e.currentTarget.getBoundingClientRect();
+              onSeek(((e.clientX - r.left) / r.width) * duration);
             }}
           >
-            <span
-              className="block h-full rounded-full bg-primary"
-              style={{ width: `${Math.min(100, progress * 100)}%` }}
-            />
+            <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, progress * 100)}%` }} />
           </button>
         </div>
-
         <div className="flex items-center gap-4 font-mono text-xs tabular-nums text-muted-foreground">
-          <span className="text-foreground">{formatBars(currentTime, analysis.bpm, analysis.beatOffset)}</span>
+          <span className="text-foreground">{formatPosition(currentTime, project.bpm, project.beatOffset, project.beatsPerBar)}</span>
           <span>
-            {formatClock(currentTime)} / {formatClock(analysis.duration)}
+            {formatClock(currentTime)} / {formatClock(duration)}
           </span>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <dl className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-          <Stat label="BPM" value={analysis.bpm.toFixed(analysis.bpm % 1 ? 1 : 0)} />
-          <Stat label="Key" value={analysis.key} />
-          <Stat label="Chord" value={chord} />
-          <Stat label="Grid" value={`${analysis.timeSignature[0]}/${analysis.timeSignature[1]}`} />
-        </dl>
-
-        <div className="ml-auto flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Volume2 className="size-3.5 text-muted-foreground" />
-            <Slider
-              className="w-24"
-              min={0}
-              max={1}
-              step={0.01}
-              value={[volume]}
-              onValueChange={(v) => onVolume(v[0] ?? 0)}
-              aria-label="Volume"
-            />
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label="Zoom out"
-              onClick={() => onZoom(Math.max(24, pxPerSec / 1.25))}
-            >
-              <ZoomOut className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label="Zoom in"
-              onClick={() => onZoom(Math.min(280, pxPerSec * 1.25))}
-            >
-              <ZoomIn className="size-4" />
-            </Button>
-          </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <div className="flex items-center gap-1.5">
+          <label htmlFor="bpm" className="uppercase tracking-wider text-muted-foreground">BPM</label>
+          <input
+            id="bpm"
+            inputMode="decimal"
+            value={bpmText}
+            onChange={(e) => setBpmText(e.target.value)}
+            onBlur={commitBpm}
+            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            className="w-16 rounded-md border border-border bg-card px-1.5 py-1 text-center font-mono text-foreground outline-none focus:border-primary"
+          />
+          <Button type="button" size="sm" variant="ghost" className="h-7 px-1.5 text-xs" title="Half time" onClick={() => onBpm(project.bpm / 2)}>÷2</Button>
+          <Button type="button" size="sm" variant="ghost" className="h-7 px-1.5 text-xs" title="Double time" onClick={() => onBpm(project.bpm * 2)}>×2</Button>
+          <Button type="button" size="sm" variant="ghost" className="h-7 px-1.5 text-xs" title="Make the playhead position the first beat of a bar" onClick={onDownbeat}>Set 1 here</Button>
+          {project.bpmConfidence > 0 ? <Confidence value={project.bpmConfidence} corrected={project.corrections.bpm} /> : null}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <label htmlFor="key" className="uppercase tracking-wider text-muted-foreground">Key</label>
+          <select
+            id="key"
+            value={project.key}
+            onChange={(e) => onKey(e.target.value, e.target.value.endsWith("minor") ? "minor" : "major")}
+            className="rounded-md border border-border bg-card px-1.5 py-1 font-mono text-foreground"
+          >
+            {!KEYS.includes(project.key) ? <option value={project.key}>{project.key}</option> : null}
+            {KEYS.map((k) => (
+              <option key={k} value={k}>{k}</option>
+            ))}
+          </select>
+          {project.keyConfidence > 0 ? <Confidence value={project.keyConfidence} corrected={project.corrections.key} /> : null}
+        </div>
+        <div className="flex items-baseline gap-1.5">
+          <span className="uppercase tracking-wider text-muted-foreground">Grid</span>
+          <span className="font-mono text-foreground">{project.beatsPerBar}/{project.beatUnit}</span>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Volume2 className="size-3.5 text-muted-foreground" />
+          <Slider className="w-24" min={0} max={1.5} step={0.01} value={[project.masterVolume]} onValueChange={(v) => onMasterVolume(v[0] ?? 1)} aria-label="Master volume" />
         </div>
       </div>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Confidence({ value, corrected }: { value: number; corrected: boolean }) {
+  if (corrected) return <span className="rounded-sm bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">edited</span>;
+  const label = value >= 0.7 ? "sure" : value >= 0.4 ? "likely" : "unsure";
   return (
-    <div className="flex items-baseline gap-1.5">
-      <dt className="uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="font-mono text-foreground">{value}</dd>
-    </div>
+    <span
+      title={`Detection confidence ${(value * 100).toFixed(0)}%`}
+      className={"rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wider " + (value >= 0.7 ? "bg-secondary text-muted-foreground" : "bg-destructive/20 text-destructive")}
+    >
+      {label}
+    </span>
   );
 }

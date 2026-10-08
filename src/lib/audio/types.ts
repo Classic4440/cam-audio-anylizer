@@ -34,7 +34,7 @@ export interface ChordEvent {
   duration: number;
   name: string;
   root: number;
-  quality: "maj" | "min" | "7" | "maj7" | "sus" | "dim";
+  quality: "maj" | "min" | "7" | "maj7" | "min7" | "sus" | "dim";
 }
 
 export interface SectionMarker {
@@ -62,6 +62,17 @@ export interface AnalysisResult {
   energy: Float32Array;
   source: "demo" | "file";
   fileName: string;
+  /** 0..1, how sure the tempo estimate is (beat-grid regularity + periodicity strength). */
+  bpmConfidence?: number;
+  /** 0..1, margin of the winning key over the runner-up. */
+  keyConfidence?: number;
+  /** Alternative tempos worth trying (e.g. half/double time). */
+  bpmCandidates?: number[];
+  keyCandidates?: { key: string; score: number }[];
+  /** Recording's deviation from A=440, in cents. */
+  tuningCents?: number;
+  /** Bumps when the algorithms change so saved projects can be re-analysed. */
+  analysisVersion?: number;
 }
 
 export type StemBuffers = Partial<Record<LaneId, AudioBuffer>>;

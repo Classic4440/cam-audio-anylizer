@@ -5,10 +5,18 @@ import { Button } from "@/components/ui/button";
 export function IdleScreen({
   onFiles,
   onDemo,
+  onBlank,
+  onOpenProjects,
+  recent,
+  onOpenRecent,
   busy,
 }: {
   onFiles: (files: FileList | File[]) => void;
   onDemo: () => void;
+  onBlank: () => void;
+  onOpenProjects: () => void;
+  recent: { id: string; name: string; updatedAt: number }[];
+  onOpenRecent: (id: string) => void;
   busy: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,6 +48,12 @@ export function IdleScreen({
             <Button type="button" variant="secondary" disabled={busy} onClick={onDemo}>
               Play studio demo
             </Button>
+            <Button type="button" variant="ghost" disabled={busy} onClick={onBlank}>
+              Empty project
+            </Button>
+            <Button type="button" variant="ghost" disabled={busy} onClick={onOpenProjects}>
+              Open project
+            </Button>
             <input
               ref={inputRef}
               type="file"
@@ -52,6 +66,22 @@ export function IdleScreen({
             />
           </div>
         </div>
+
+        {recent.length ? (
+          <div className="mt-8 max-w-xl">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Recent projects</p>
+            <ul className="divide-y divide-border rounded-lg border border-border bg-card">
+              {recent.slice(0, 4).map((r) => (
+                <li key={r.id}>
+                  <button type="button" disabled={busy} onClick={() => onOpenRecent(r.id)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-secondary disabled:opacity-50">
+                    <span className="truncate text-sm text-foreground">{r.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{new Date(r.updatedAt).toLocaleDateString()}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         <MiniPlaylist />
       </main>
