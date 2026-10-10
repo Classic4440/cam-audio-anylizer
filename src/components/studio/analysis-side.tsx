@@ -1,7 +1,6 @@
 import { AudioWaveform, Music2, RefreshCw, SplitSquareHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Controller } from "@/lib/daw/controller";
-import { convertLanesToMidi } from "@/lib/daw/factory";
 import * as ops from "@/lib/daw/ops";
 import { useControllerState, useProjectState } from "./use-studio";
 
@@ -75,7 +74,7 @@ export function AnalysisSide({ controller, currentTime }: { controller: Controll
             <SplitSquareHorizontal className="size-4" />
             {hasStems ? "Stems added" : "Separate stems"}
           </Button>
-          <Button type="button" size="sm" variant="secondary" className="justify-start" disabled={busy || hasMidi} onClick={() => controller.store.commit((p) => convertLanesToMidi(p))}>
+          <Button type="button" size="sm" variant="secondary" className="justify-start" disabled={busy || hasMidi} onClick={() => void controller.convertToMidi()}>
             <Music2 className="size-4" />
             {hasMidi ? "MIDI tracks added" : "Convert to MIDI tracks"}
           </Button>

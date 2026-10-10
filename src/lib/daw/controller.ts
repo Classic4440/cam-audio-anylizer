@@ -4,7 +4,10 @@ import { refineLanesFromStems } from "../audio/refine.ts";
 import { separateAudioBuffer } from "../audio/separate-client.ts";
 import { STEM_NAMES } from "../audio/separate.ts";
 import type { AnalysisResult, LaneId } from "../audio/types.ts";
-import { addStemTracks, applyLanes, assetMeta, blankProject, eventClips, projectFromAnalysis, STEM_LABEL } from "./factory.ts";
+import { detectStrikes } from "../audio/dsp/comping.ts";
+import { brightnessFrom, describeTone, extractKit, pickPatch, type KitPiece } from "../audio/dsp/tone.ts";
+import { toMono } from "../audio/dsp/util.ts";
+import { addStemTracks, applyLanes, assetMeta, blankProject, convertLanesToMidi, eventClips, projectFromAnalysis, STEM_LABEL } from "./factory.ts";
 import { newId } from "./ids.ts";
 import { exportProjectMidi } from "./midi.ts";
 import { renderProject } from "./mixer-graph.ts";
@@ -15,7 +18,7 @@ import { parseProject, serializeProject } from "./serialize.ts";
 import { ProjectStore } from "./store.ts";
 import { getTimelineEngine, type TimelineEngine } from "./timeline-engine.ts";
 import { projectEnd } from "./timeline-math.ts";
-import type { AssetMeta, Project } from "./types.ts";
+import type { AssetMeta, Project, Track } from "./types.ts";
 import { channelsOf, encodeWav } from "./wav.ts";
 
 const MAX_BYTES = 150 * 1024 * 1024;
@@ -371,6 +374,76 @@ export class Controller {
     const p = this.store.getState().project;
     if (!p) return null;
     return Object.values(p.assets).find((a) => a.role === "source") ?? null;
+  }
+
+  /** Buffer of the audio on the first audio track named like `stemName` ("Drums"), if stems exist. */
+  private stemBuffer(project: Project, stemName: string): AudioBuffer | undefined {
+    const t = project.tracks.find((x) => x.kind === "audio" && x.name === `${stemName} (stem)`);
+    const clip = t?.clips.find((c) => c.kind === "audio");
+    return clip && clip.kind === "audio" ? this.engine.getBuffer(clip.assetId) : undefined;
+  }
+
+  /**
+   * Convert detected lanes to MIDI tracks that sound like the analysed track:
+   * drum hits are cut from the track itself, and the chord instrument is chosen from the track's tone.
+   * Falls back to the built-in sounds when there is no audio to learn from.
+   */
+  async convertToMidi(): Promise<void> {
+    await this.run("Building MIDI from the track", async (progress) => {
+      const project = this.store.getState().project;
+      if (!project) return;
+      const src = this.sourceAsset();
+      const mix = src ? this.engine.getBuffer(src.id) : undefined;
+      const drumsBuf = this.stemBuffer(project, "Drums") ?? mix;
+      const otherBuf = this.stemBuffer(project, "Other") ?? mix;
+      const ctx = this.engine.ensure();
+
+      const newAssets: AssetMeta[] = [];
+      const kit: NonNullable<Track["kit"]> = {};
+      if (drumsBuf) {
+        progress(20, "Cutting drum hits from the track");
+        const times: Partial<Record<KitPiece, number[]>> = {};
+        for (const piece of ["kick", "snare", "hats"] as const) {
+          const lane = project.tracks.find((t) => t.lane === piece);
+          times[piece] = (lane?.clips ?? []).filter((c) => c.kind === "event").map((c) => c.start);
+        }
+        const samples = extractKit(toMono(channelsOf(drumsBuf)), drumsBuf.sampleRate, times);
+        for (const s of samples) {
+          const buf = ctx.createBuffer(1, s.data.length, s.sampleRate);
+          buf.copyToChannel(s.data as Float32Array<ArrayBuffer>, 0);
+          const blob = new Blob([encodeWav([s.data], s.sampleRate, 16) as BlobPart], { type: "audio/wav" });
+          const asset = assetMeta({ name: `${s.piece} (from track).wav`, mime: "audio/wav", size: blob.size, buffer: buf, role: "sample" });
+          await this.registerBuffer(project.id, asset, buf, blob);
+          newAssets.push(asset);
+          kit[s.piece] = asset.id;
+        }
+      }
+      let patch: ReturnType<typeof pickPatch> | undefined;
+      let brightness: number | undefined;
+      let strikes: ReturnType<typeof detectStrikes> | undefined;
+      let excludeStrikes: number[] | undefined;
+      if (otherBuf) {
+        progress(60, "Matching the chord sound");
+        const monoOther = toMono(channelsOf(otherBuf));
+        const tone = describeTone(monoOther, otherBuf.sampleRate);
+        patch = pickPatch(tone);
+        brightness = brightnessFrom(tone);
+        progress(80, "Finding the chord rhythm");
+        strikes = detectStrikes(monoOther, otherBuf.sampleRate);
+        // From the full mix, kicks and snares also look like onsets; ignore those.
+        if (otherBuf === mix) {
+          excludeStrikes = project.tracks
+            .filter((t) => t.lane === "kick" || t.lane === "snare")
+            .flatMap((t) => t.clips.filter((c) => c.kind === "event").map((c) => c.start));
+        }
+      }
+      this.store.commit((p) => {
+        const withAssets = { ...p, assets: { ...p.assets, ...Object.fromEntries(newAssets.map((a) => [a.id, a])) } };
+        return convertLanesToMidi(withAssets, { kit, patch, brightness, strikes, excludeStrikes });
+      });
+      const parts = [Object.keys(kit).length ? `${Object.keys(kit).length} drum sounds cut from your track` : null, patch ? `chords set to ${patch}${strikes ? " with the track\u2019s rhythm" : ""}` : null].filter(Boolean);
+      this.set({ notice: parts.length ? `MIDI added: ${parts.join(", ")}. You can change the instrument on the Chords track.` : "MIDI tracks added with the built-in sounds." });
+    });
   }
 
   /** Split the source mix into drums / bass / vocals / other stems and re-read the lanes from them. */

@@ -3,6 +3,9 @@ import { newId } from "./ids.ts";
 import * as ops from "./ops.ts";
 import type { AssetMeta, EventClip, Project, TimelineClip, Track } from "./types.ts";
 import { DRUM_PITCH } from "./midi.ts";
+import { voiceChord } from "./voicing.ts";
+import type { PatchId } from "../audio/dsp/tone.ts";
+import { rhythmForChord, type Strike } from "../audio/dsp/comping.ts";
 
 const laneColor = (lane: LaneId) => `var(${LANE_META[lane].colorVar})`;
 
@@ -150,8 +153,20 @@ export function addStemTracks(
   return next;
 }
 
+export interface MidiConvertOptions {
+  /** Chord instrument. Pass the one matched to the track's tone. */
+  patch?: PatchId;
+  brightness?: number;
+  /** Drum one-shots cut from the track (asset ids). */
+  kit?: Track["kit"];
+  /** Detected chord-instrument onsets. When given, chords re-strike with the track's rhythm. */
+  strikes?: Strike[];
+  /** Drum hit times to ignore as chord strikes (use when strikes came from the full mix). */
+  excludeStrikes?: number[];
+}
+
 /** Convert the detected drum/bass/chord lanes into editable, audible MIDI tracks. */
-export function convertLanesToMidi(p: Project): Project {
+export function convertLanesToMidi(p: Project, opts: MidiConvertOptions = {}): Project {
   let next = p;
   const lane = (id: LaneId) => p.tracks.find((t) => t.lane === id);
   const drumTrack = ops.addTrack(next, { name: "Drums (MIDI)", kind: "midi", color: laneColor("kick") });
@@ -165,7 +180,7 @@ export function convertLanesToMidi(p: Project): Project {
     }
   }
   drumClips.sort((a, b) => a.start - b.start);
-  next = { ...next, tracks: next.tracks.map((t) => (t.id === dId ? { ...t, synth: "drums" as const, clips: drumClips } : t)) };
+  next = { ...next, tracks: next.tracks.map((t) => (t.id === dId ? { ...t, synth: "drums" as const, ...(opts.kit && Object.keys(opts.kit).length ? { kit: opts.kit } : {}), clips: drumClips } : t)) };
 
   const bass = lane("bass");
   if (bass && bass.clips.some((c) => c.kind === "event" && c.pitch !== undefined)) {
@@ -186,16 +201,27 @@ export function convertLanesToMidi(p: Project): Project {
     const k = ops.addTrack(next, { name: "Chords (MIDI)", kind: "midi", color: laneColor("chords") });
     next = k.project;
     const kId = k.ids[0]!;
-    // One note per chord tone so each can be edited individually.
+    // One note per chord tone so each can be edited individually. Voiced with voice leading.
     const notes: EventClip[] = [];
+    let prev: number[] | null = null;
     for (const c of chords.clips) {
       if (c.kind !== "event" || !c.chord) continue;
-      const iv: Record<string, number[]> = { maj: [0, 4, 7], min: [0, 3, 7], "7": [0, 4, 7, 10], maj7: [0, 4, 7, 11], min7: [0, 3, 7, 10], sus: [0, 5, 7], dim: [0, 3, 6] };
-      for (const i of iv[c.chord.quality] ?? iv.maj!) {
-        notes.push({ kind: "event", id: newId("clip"), trackId: kId, name: c.name, start: c.start, duration: c.duration, velocity: c.velocity * 0.8, pitch: 48 + c.chord.root + i });
+      const voicing = voiceChord(prev, c.chord.root, c.chord.quality);
+      prev = voicing;
+      const hits = opts.strikes
+        ? rhythmForChord(c.start, c.start + c.duration, opts.strikes, {
+            gridSec: 60 / p.bpm / 4,
+            gridOffset: p.beatOffset,
+            exclude: opts.excludeStrikes,
+          })
+        : [{ start: c.start, duration: c.duration }];
+      for (const h of hits) {
+        for (const pitch of voicing) {
+          notes.push({ kind: "event", id: newId("clip"), trackId: kId, name: c.name, start: h.start, duration: h.duration, velocity: c.velocity * 0.8, pitch });
+        }
       }
     }
-    next = { ...next, tracks: next.tracks.map((t) => (t.id === kId ? { ...t, synth: "keys" as const, clips: notes } : t)) };
+    next = { ...next, tracks: next.tracks.map((t) => (t.id === kId ? { ...t, synth: "keys" as const, patch: opts.patch ?? "piano", brightness: opts.brightness ?? 0.6, clips: notes } : t)) };
   }
   return next;
 }

@@ -157,7 +157,7 @@ export class MixGraph {
         out.push(src);
       }
     }
-    out.push(...scheduleMidiTracks(this.ctx, this.tracks, project, from, startAt, onlyTrackIds));
+    out.push(...scheduleMidiTracks(this.ctx, this.tracks, project, from, startAt, onlyTrackIds, buffers));
     return out;
   }
 }

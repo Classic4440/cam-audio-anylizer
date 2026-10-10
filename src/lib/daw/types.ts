@@ -1,4 +1,5 @@
 import type { LaneId } from "../audio/types.ts";
+import type { KitPiece, PatchId } from "../audio/dsp/tone.ts";
 
 /** Bump when the persisted shape changes; add a step in `migrateProject`. */
 export const PROJECT_FORMAT_VERSION = 1;
@@ -14,7 +15,7 @@ export const SNAP_MODES: { id: SnapMode; label: string }[] = [
   { id: "bar", label: "1 bar" },
 ];
 
-export type AssetRole = "source" | "stem" | "import" | "bounce";
+export type AssetRole = "source" | "stem" | "import" | "bounce" | "sample";
 
 /** Metadata only. The audio bytes live in IndexedDB (`assets` store), never in React state. */
 export interface AssetMeta {
@@ -67,6 +68,12 @@ export interface Track {
   lane?: LaneId;
   /** How a `midi` track sounds: drum hits (kick 36 / snare 38 / hat 42), bass or keys. */
   synth?: "drums" | "bass" | "keys";
+  /** Instrument for `keys` tracks (chords). Defaults to piano. */
+  patch?: PatchId;
+  /** 0..1 filter brightness for pitched synths. Defaults to 0.6. */
+  brightness?: number;
+  /** Drum one-shots cut from the analysed track: asset ids per kit piece. Missing = built-in synth hit. */
+  kit?: Partial<Record<KitPiece, string>>;
   /** Linear gain, 0..1.5 */
   volume: number;
   /** -1 (left) .. 1 (right) */

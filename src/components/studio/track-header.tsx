@@ -2,6 +2,7 @@ import { Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Controller } from "@/lib/daw/controller";
 import * as ops from "@/lib/daw/ops";
+import { PATCHES, type PatchId } from "@/lib/audio/dsp/tone";
 import type { Track } from "@/lib/daw/types";
 
 const KIND_LABEL: Record<Track["kind"], string> = { audio: "Audio", analysis: "Detected", chords: "Chords", midi: "MIDI" };
@@ -114,6 +115,39 @@ export function TrackHeader({ track, height, controller }: { track: Track; heigh
             className="h-1 w-12 accent-[var(--color-primary)]"
           />
         </div>
+      ) : null}
+      {track.kind === "midi" && track.synth === "keys" && height >= 100 ? (
+        <div className="flex items-center gap-2 pl-1.5">
+          <select
+            aria-label={`${track.name} instrument`}
+            value={track.patch ?? "piano"}
+            onChange={(e) => patch({ patch: e.target.value as PatchId })}
+            className="h-6 min-w-0 flex-1 rounded-sm border border-border bg-background px-1 text-[11px] text-foreground outline-none focus:border-primary"
+          >
+            {PATCHES.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={track.brightness ?? 0.6}
+            aria-label={`${track.name} brightness`}
+            title="Brightness (double-click to reset)"
+            onChange={(e) => patch({ brightness: Number(e.target.value) })}
+            onDoubleClick={() => patch({ brightness: 0.6 })}
+            className="h-1 w-12 accent-[var(--color-primary)]"
+          />
+        </div>
+      ) : null}
+      {track.kind === "midi" && track.synth === "drums" && height >= 100 ? (
+        <p className="pl-1.5 text-[10px] text-muted-foreground" title="Kick, snare and hat sounds were cut from the original track">
+          {track.kit && Object.keys(track.kit).length ? "Sounds cut from your track" : "Built-in drum sounds"}
+        </p>
       ) : null}
       <div className="flex items-center gap-2 pl-1.5">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{KIND_LABEL[track.kind]}</span>

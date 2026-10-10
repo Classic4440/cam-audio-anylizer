@@ -453,7 +453,7 @@ export function Timeline({ controller }: { controller: Controller }) {
       const p = store.getState().project;
       const found = p && ops.findClip(p, ids[0]!);
       if (found && found.clip.kind === "event" && found.clip.pitch !== undefined) {
-        void engine.preview(found.track.synth, found.clip.pitch);
+        void engine.preview(found.track, found.clip.pitch);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -559,7 +559,7 @@ export function Timeline({ controller }: { controller: Controller }) {
     if (!ids.includes(hit.clipId)) return; // toggled off
     const found = ops.findClip(live.current.project, hit.clipId)!;
     if (found.clip.kind === "event" && found.clip.pitch !== undefined && found.track.kind === "midi") {
-      void engine.preview(found.track.synth, found.clip.pitch, found.clip.velocity);
+      void engine.preview(found.track, found.clip.pitch, found.clip.velocity);
     }
     dragRef.current = {
       kind: "clip",
@@ -666,7 +666,7 @@ export function Timeline({ controller }: { controller: Controller }) {
         return added ? [added.id] : null;
       },
     });
-    if (pitch !== undefined) void engine.preview(row.track.synth, pitch);
+    if (pitch !== undefined) void engine.preview(row.track, pitch);
   };
 
   /* ------------------------------- render ------------------------------ */

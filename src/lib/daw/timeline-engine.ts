@@ -1,7 +1,7 @@
 import { previewNote } from "./midi-synth.ts";
 import { MixGraph } from "./mixer-graph.ts";
 import { clipEnd, projectEnd } from "./timeline-math.ts";
-import type { Project } from "./types.ts";
+import type { Project, Track } from "./types.ts";
 
 /**
  * Central playback engine. The timeline playhead IS the engine position:
@@ -187,9 +187,9 @@ export class TimelineEngine {
   }
 
   /** Audition a single MIDI note (call from a user gesture). */
-  async preview(synth: "drums" | "bass" | "keys" | undefined, pitch: number, velocity = 0.8): Promise<void> {
+  async preview(track: Track | undefined, pitch: number, velocity = 0.8): Promise<void> {
     const ctx = await this.unlock();
-    if (this.analyser) previewNote(ctx, this.analyser, synth, pitch, velocity);
+    if (this.analyser) previewNote(ctx, this.analyser, track, pitch, velocity, this.buffers);
   }
 
   /* ----------------------------- metering ----------------------------- */

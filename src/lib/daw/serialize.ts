@@ -41,6 +41,9 @@ const track = z.object({
   color: z.string(),
   lane: z.enum(["kick", "snare", "hats", "bass", "vocals", "chords"]).optional(),
   synth: z.enum(["drums", "bass", "keys"]).optional(),
+  patch: z.enum(["piano", "epiano", "organ", "pad", "strings", "pluck"]).optional(),
+  brightness: z.number().min(0).max(1).optional(),
+  kit: z.object({ kick: z.string().optional(), snare: z.string().optional(), hats: z.string().optional() }).optional(),
   volume: z.number().min(0).max(1.5),
   pan: z.number().min(-1).max(1),
   mute: z.boolean(),
@@ -57,7 +60,7 @@ const asset = z.object({
   duration: z.number(),
   sampleRate: z.number(),
   channels: z.number(),
-  role: z.enum(["source", "stem", "import", "bounce"]),
+  role: z.enum(["source", "stem", "import", "bounce", "sample"]),
   createdAt: z.number(),
 });
 

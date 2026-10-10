@@ -301,7 +301,7 @@ export function addEventClip(
 /* ------------------------------ tracks ---------------------------- */
 
 export type TrackPatch = Partial<
-  Pick<Track, "name" | "volume" | "pan" | "mute" | "solo" | "armed" | "color">
+  Pick<Track, "name" | "volume" | "pan" | "mute" | "solo" | "armed" | "color" | "patch" | "brightness">
 >;
 
 export function updateTrack(p: Project, trackId: string, patch: TrackPatch): Project {
@@ -309,6 +309,7 @@ export function updateTrack(p: Project, trackId: string, patch: TrackPatch): Pro
     const next: Track = { ...t, ...patch };
     if (patch.volume !== undefined) next.volume = clamp(patch.volume, 0, 1.5);
     if (patch.pan !== undefined) next.pan = clamp(patch.pan, -1, 1);
+    if (patch.brightness !== undefined) next.brightness = clamp(patch.brightness, 0, 1);
     if (patch.name !== undefined) next.name = patch.name.trim().slice(0, 40) || t.name;
     const same = (Object.keys(next) as (keyof Track)[]).every((k) => next[k] === t[k]);
     return same ? t : next;
