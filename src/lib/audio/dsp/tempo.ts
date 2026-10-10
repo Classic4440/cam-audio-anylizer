@@ -40,10 +40,26 @@ export interface TempoEstimate {
 
 const MIN_BPM = 45;
 const MAX_BPM = 210;
+/** How far (seconds) the autocorrelation is computed; bar-level evidence needs several beats. */
+const AC_REACH_SEC = 8;
+/**
+ * Weights for periodicity at 1, 2, 4 and 8 beats. A real beat period is backed by the bar
+ * (4 beats) and two-bar (8 beats) repetition. A dotted-eighth/triplet pulse (3:2 or 4:3 off the
+ * beat, very common in trap hi-hat/kick patterns) matches the beat itself but not the bar.
+ * Tuned on 10 hand-checked hip-hop tracks (see docs/TEMPO-NOTES.md).
+ */
+const W_BEAT = 1;
+const W_2 = 0.3;
+const W_4 = 0.3;
+const W_8 = 1;
+/** Log-normal tempo prior: centre (BPM) and width (octaves). Width was 0.7; widened so the bar-level evidence can decide. */
+const PRIOR_CENTER_BPM = 120;
+const PRIOR_SIGMA_OCT = 1.0;
+const W_NORM = (1 + 0.3) / (W_BEAT + W_2 + W_4 + W_8);
 
 function prior(bpm: number): number {
-  const oct = Math.log2(bpm / 120);
-  return Math.exp(-0.5 * (oct / 0.7) ** 2);
+  const oct = Math.log2(bpm / PRIOR_CENTER_BPM);
+  return Math.exp(-0.5 * (oct / PRIOR_SIGMA_OCT) ** 2);
 }
 
 export function estimateTempo(env: Float32Array, hopTime: number): TempoEstimate {
@@ -52,8 +68,9 @@ export function estimateTempo(env: Float32Array, hopTime: number): TempoEstimate
   if (n < 64) return fallback;
 
   const minLag = Math.max(2, Math.floor(60 / MAX_BPM / hopTime));
-  const maxLag = Math.ceil(60 / MIN_BPM / hopTime);
-  const win = Math.min(n, Math.round(10 / hopTime));
+  const maxLag = Math.ceil(AC_REACH_SEC / hopTime);
+  const beatMaxLag = Math.ceil(60 / MIN_BPM / hopTime);
+  const win = Math.min(n, Math.round(12 / hopTime));
   const step = Math.max(1, Math.round(5 / hopTime));
   const ac = new Float64Array(maxLag + 2);
   let totalW = 0;
@@ -91,9 +108,9 @@ export function estimateTempo(env: Float32Array, hopTime: number): TempoEstimate
   const scores: { bpm: number; raw: number; score: number }[] = [];
   for (let bpm = MIN_BPM; bpm <= MAX_BPM; bpm += 0.25) {
     const lag = 60 / bpm / hopTime;
-    if (lag < minLag || lag > maxLag) continue;
-    // Beat-period evidence plus support from the bar-level (2x) period.
-    const raw = at(lag) + 0.3 * at(lag * 2);
+    if (lag < minLag || lag > beatMaxLag) continue;
+    // Beat-period evidence plus support from the 2-, 4- and 8-beat periods.
+    const raw = (W_BEAT * at(lag) + W_2 * at(lag * 2) + W_4 * at(lag * 4) + W_8 * at(lag * 8)) * W_NORM;
     scores.push({ bpm, raw, score: raw * prior(bpm) });
   }
   if (!scores.length) return fallback;
