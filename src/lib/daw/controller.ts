@@ -5,6 +5,7 @@ import { separateAudioBuffer } from "../audio/separate-client.ts";
 import { STEM_NAMES } from "../audio/separate.ts";
 import type { AnalysisResult, LaneId } from "../audio/types.ts";
 import { detectStrikes } from "../audio/dsp/comping.ts";
+import { bassMatch, chordMatch, drumMatch } from "../audio/dsp/match.ts";
 import { brightnessFrom, describeTone, extractKit, pickPatch, type KitPiece } from "../audio/dsp/tone.ts";
 import { toMono } from "../audio/dsp/util.ts";
 import { addStemTracks, applyLanes, assetMeta, blankProject, convertLanesToMidi, eventClips, projectFromAnalysis, STEM_LABEL } from "./factory.ts";
@@ -38,9 +39,27 @@ export interface ControllerState {
   /** Assets referenced by the project whose audio is not stored locally. */
   missing: { id: string; name: string }[];
   peaksVersion: number;
+  /** How closely the MIDI rebuild sounds like the original, or null if not scored yet. */
+  match: RebuildScores | null;
   projects: db.ProjectSummary[];
   saveError: string | null;
 }
+
+export interface RebuildScores {
+  /** 0..100 per part; null when the project has no MIDI track for it. */
+  kick: number | null;
+  snare: number | null;
+  hats: number | null;
+  bass: number | null;
+  chords: number | null;
+  /** True when a part was compared with the full mix because no stem was available (less precise). */
+  againstMix: boolean;
+  /** Seconds of the track that were scored. */
+  seconds: number;
+}
+
+const MATCH_SECONDS = 120;
+const REBUILD_RATE = 22050;
 
 type Listener = () => void;
 
@@ -60,6 +79,7 @@ export class Controller {
     analysis: null,
     missing: [],
     peaksVersion: 0,
+    match: null,
     projects: [],
     saveError: null,
   };
@@ -261,12 +281,13 @@ export class Controller {
     await this.flush();
     this.engine.stop();
     this.store.close();
-    this.set({ analysis: null, missing: [] });
+    this.set({ analysis: null, missing: [], match: null });
     db.setLastProjectId(null);
     await this.refreshProjects();
   }
 
   private resetRuntime(_projectId: string): void {
+    this.state = { ...this.state, match: null };
     this.engine.stop();
     this.engine.dropBuffers(new Set());
     this.peaks.clear();
@@ -443,6 +464,87 @@ export class Controller {
       });
       const parts = [Object.keys(kit).length ? `${Object.keys(kit).length} drum sounds cut from your track` : null, patch ? `chords set to ${patch}${strikes ? " with the track\u2019s rhythm" : ""}` : null].filter(Boolean);
       this.set({ notice: parts.length ? `MIDI added: ${parts.join(", ")}. You can change the instrument on the Chords track.` : "MIDI tracks added with the built-in sounds." });
+    });
+  }
+
+  /** Switch between hearing the original audio and the MIDI rebuild (undoable, like any mute change). */
+  setListenMode(mode: "original" | "rebuild"): void {
+    this.store.commit((p) => ops.setListenMode(p, mode));
+  }
+
+  /**
+   * Score each MIDI part against the original: render it alone, then compare rhythm (drums), pitch and
+   * loudness (bass) or harmony (chords) with the matching stem, or the full mix when there is no stem.
+   */
+  async scoreRebuild(): Promise<void> {
+    await this.run("Scoring the rebuild", async (progress) => {
+      const project = this.store.getState().project;
+      if (!project) return;
+      const midi = (synth: "drums" | "bass" | "keys") => project.tracks.find((t) => t.kind === "midi" && t.synth === synth && t.clips.length > 0);
+      const parts = { drums: midi("drums"), bass: midi("bass"), keys: midi("keys") };
+      if (!parts.drums && !parts.bass && !parts.keys) {
+        this.set({ error: "Convert the detected parts to MIDI first, then score the rebuild." });
+        return;
+      }
+      const src = this.sourceAsset();
+      const mix = src ? this.engine.getBuffer(src.id) : undefined;
+      if (!mix && !this.stemBuffer(project, "Drums")) {
+        this.set({ error: "The original audio is not loaded, so there is nothing to compare the rebuild with." });
+        return;
+      }
+      const seconds = Math.min(MATCH_SECONDS, projectEnd(project));
+      let againstMix = false;
+      const pick = (stemName: string): AudioBuffer | undefined => {
+        const stem = this.stemBuffer(project, stemName);
+        if (stem) return stem;
+        againstMix = true;
+        return mix;
+      };
+      const originalOf = (buf: AudioBuffer): { x: Float32Array; sr: number } => {
+        const x = toMono(channelsOf(buf));
+        return { x: x.subarray(0, Math.min(x.length, Math.floor(seconds * buf.sampleRate))), sr: buf.sampleRate };
+      };
+      const renderPart = async (trackId: string): Promise<Float32Array> => {
+        const buf = await renderProject(project, this.engine.buffersMap(), OfflineAudioContext, { sampleRate: REBUILD_RATE, onlyTrackIds: [trackId], to: seconds });
+        return buf.getChannelData(0);
+      };
+      const yieldUi = () => new Promise<void>((r) => setTimeout(r, 0));
+      const scores: RebuildScores = { kick: null, snare: null, hats: null, bass: null, chords: null, againstMix: false, seconds };
+
+      if (parts.drums) {
+        progress(15, "Scoring drums");
+        const orig = pick("Drums");
+        if (orig) {
+          const o = originalOf(orig);
+          const r = await renderPart(parts.drums.id);
+          await yieldUi();
+          scores.kick = drumMatch(o.x, o.sr, r, REBUILD_RATE, "kick");
+          scores.snare = drumMatch(o.x, o.sr, r, REBUILD_RATE, "snare");
+          scores.hats = drumMatch(o.x, o.sr, r, REBUILD_RATE, "hats");
+        }
+      }
+      if (parts.bass) {
+        progress(45, "Scoring bass");
+        const orig = pick("Bass");
+        if (orig) {
+          const o = originalOf(orig);
+          const r = await renderPart(parts.bass.id);
+          await yieldUi();
+          scores.bass = bassMatch(o.x, o.sr, r, REBUILD_RATE);
+        }
+      }
+      if (parts.keys) {
+        progress(75, "Scoring chords");
+        const orig = pick("Other");
+        if (orig) {
+          const o = originalOf(orig);
+          const r = await renderPart(parts.keys.id);
+          await yieldUi();
+          scores.chords = chordMatch(o.x, o.sr, r, REBUILD_RATE);
+        }
+      }
+      scores.againstMix = againstMix;
+      this.set({ match: scores });
     });
   }
 

@@ -191,3 +191,47 @@ test("transpose and add-event ops", () => {
   assert.equal((ops.transposeClips(up, a.ids, 999).tracks[2]!.clips.find((c) => c.id === a.ids[0])! as { pitch: number }).pitch, 127);
   assert.equal(ops.addEventClip(p, { trackId: "t1", start: 0, duration: 1 }).ids.length, 0, "events cannot go on audio tracks");
 });
+
+test("listen mode switches between the original and the MIDI rebuild", () => {
+  const p0 = makeProject();
+  const withMidi: Project = {
+    ...p0,
+    tracks: [
+      ...p0.tracks,
+      { id: "m1", name: "Drums (MIDI)", kind: "midi", color: "x", volume: 1, pan: 0, mute: false, solo: false, armed: false, synth: "drums", clips: [] },
+    ],
+  };
+  assert.equal(ops.listenMode(p0), "original"); // no MIDI yet
+  assert.equal(ops.listenMode(withMidi), "mixed");
+
+  const rebuild = ops.setListenMode(withMidi, "rebuild");
+  assert.equal(ops.listenMode(rebuild), "rebuild");
+  assert.ok(rebuild.tracks.filter((t) => t.kind === "audio").every((t) => t.mute));
+  assert.equal(rebuild.tracks.find((t) => t.id === "m1")!.mute, false);
+
+  const original = ops.setListenMode(rebuild, "original");
+  assert.equal(ops.listenMode(original), "original");
+  assert.equal(original.tracks.find((t) => t.id === "m1")!.mute, true);
+  assert.equal(original.tracks.find((t) => t.id === "t1")!.mute, false);
+  // Idempotent: a repeat returns the same object so undo history gets no empty entry.
+  assert.equal(ops.setListenMode(original, "original"), original);
+});
+
+test("listen mode keeps the source mix muted when stems exist, and clears solo", () => {
+  const p0 = makeProject();
+  const stem: AudioClip = { kind: "audio", id: "c2", trackId: "t4", name: "Drums", start: 0, duration: 10, assetId: "a2", offset: 0, gain: 1, fadeIn: 0, fadeOut: 0 };
+  const p: Project = {
+    ...p0,
+    assets: { ...p0.assets, a2: { ...p0.assets.a1!, id: "a2", role: "stem" } },
+    tracks: [
+      { ...p0.tracks[0]!, mute: true },
+      { id: "t4", name: "Drums (stem)", kind: "audio", color: "x", volume: 1, pan: 0, mute: true, solo: true, armed: false, clips: [stem] },
+      { id: "m1", name: "Drums (MIDI)", kind: "midi", color: "x", volume: 1, pan: 0, mute: false, solo: false, armed: false, synth: "drums", clips: [] },
+    ],
+  };
+  const o = ops.setListenMode(p, "original");
+  assert.equal(o.tracks[0]!.mute, true); // source mix stays muted: the stems replace it
+  assert.equal(o.tracks[1]!.mute, false);
+  assert.equal(o.tracks[1]!.solo, false);
+  assert.equal(ops.listenMode(o), "original");
+});

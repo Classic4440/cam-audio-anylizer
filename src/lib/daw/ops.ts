@@ -409,3 +409,41 @@ export function setMasterVolume(p: Project, v: number): Project {
 export function setMarkers(p: Project, markers: Project["markers"]): Project {
   return { ...p, markers };
 }
+
+/* ------------------------------ listen mode ------------------------------ */
+
+export type ListenMode = "original" | "rebuild" | "mixed";
+
+const isSourceMixTrack = (p: Project, t: Track): boolean =>
+  t.kind === "audio" && t.clips.some((c) => c.kind === "audio" && p.assets[c.assetId]?.role === "source");
+const hasStemTracks = (p: Project): boolean => p.tracks.some((t) => t.kind === "audio" && t.name.endsWith("(stem)"));
+
+/** What the project currently plays: the original audio, the MIDI rebuild, or a mix of both. */
+export function listenMode(p: Project): ListenMode {
+  const audio = p.tracks.filter((t) => t.kind === "audio" && t.clips.length > 0);
+  const midi = p.tracks.filter((t) => t.kind === "midi");
+  const audioOn = audio.some((t) => !t.mute);
+  const midiOn = midi.some((t) => !t.mute);
+  if (!midi.length || (audioOn && !midiOn)) return "original";
+  if (midiOn && !audioOn) return "rebuild";
+  return "mixed";
+}
+
+/**
+ * Switch between hearing the original and hearing the MIDI rebuild.
+ * "original": audio on (the source mix stays muted when its stems exist, since they add back up to it), MIDI off.
+ * "rebuild": all audio off, MIDI on. Solo is cleared on every track so it cannot hide the switch.
+ */
+export function setListenMode(p: Project, mode: Exclude<ListenMode, "mixed">): Project {
+  const stems = hasStemTracks(p);
+  let changed = false;
+  const tracks = p.tracks.map((t) => {
+    let mute = t.mute;
+    if (t.kind === "audio") mute = mode === "rebuild" ? true : isSourceMixTrack(p, t) && stems;
+    else if (t.kind === "midi") mute = mode === "original";
+    if (mute === t.mute && !t.solo) return t;
+    changed = true;
+    return { ...t, mute, solo: false };
+  });
+  return changed ? { ...p, tracks } : p;
+}
