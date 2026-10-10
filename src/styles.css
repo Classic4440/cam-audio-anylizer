@@ -42,6 +42,8 @@
 }
 
 :root {
+  /* Height of the Studio / Editor switcher bar (src/components/app-nav.tsx). */
+  --shell-h: 2.5rem;
   --bg: #0a0a0c;
   --bg-elevated: #121216;
   --bg-subtle: #1a1a20;

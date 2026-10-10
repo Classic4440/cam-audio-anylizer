@@ -1,5 +1,7 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
+import { AppNav } from "@/components/app-nav";
+import { EditorHost } from "@/components/editor/editor-host";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
@@ -48,7 +50,9 @@ function RootDocument() {
       <body className="bg-background text-foreground font-sans">
         <PreviewHostBridge />
         <AuthProvider>
+          <AppNav />
           <Outlet />
+          <EditorHost />
         </AuthProvider>
         <Toaster />
         <Scripts />

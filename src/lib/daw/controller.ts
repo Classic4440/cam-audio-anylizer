@@ -655,6 +655,18 @@ export class Controller {
     });
   }
 
+  /** Bounce the current mix to an in-memory 24-bit WAV (for handing to the editor). Null if nothing to render. */
+  async renderMixFile(): Promise<File | null> {
+    let out: File | null = null;
+    await this.run("Bouncing mix", async () => {
+      const p = this.store.getState().project;
+      if (!p) return;
+      const buf = await renderProject(p, this.engine.buffersMap(), OfflineAudioContext, this.renderOpts());
+      out = new File([encodeWav(channelsOf(buf), buf.sampleRate, 24) as BlobPart], `${p.name}.wav`, { type: "audio/wav" });
+    });
+    return out as File | null;
+  }
+
   /** One WAV per audio track, regardless of mute/solo. */
   async exportTrackWavs(): Promise<void> {
     await this.run("Exporting tracks", async (progress) => {

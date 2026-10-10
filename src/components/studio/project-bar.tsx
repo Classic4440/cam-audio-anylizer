@@ -1,7 +1,9 @@
-import { Download, FilePlus2, FolderOpen, Redo2, Save, Undo2 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { AudioWaveform, Download, FilePlus2, FolderOpen, Redo2, Save, Undo2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { Controller } from "@/lib/daw/controller";
+import { sendToEditor } from "@/lib/editor/handoff";
 import { formatSaved, useControllerState, useProjectState } from "./use-studio";
 
 export function ProjectBar({ controller, onOpen }: { controller: Controller; onOpen: () => void }) {
@@ -10,11 +12,18 @@ export function ProjectBar({ controller, onOpen }: { controller: Controller; onO
   const project = ps.project!;
   const [name, setName] = useState(project.name);
   const [exportOpen, setExportOpen] = useState(false);
+  const navigate = useNavigate();
   useEffect(() => setName(project.name), [project.name]);
 
   const commitName = () => {
     if (name.trim() && name.trim() !== project.name) controller.renameProject(name);
     else setName(project.name);
+  };
+  const editMix = async () => {
+    const file = await controller.renderMixFile();
+    if (!file) return;
+    sendToEditor(file);
+    await navigate({ to: "/editor" });
   };
   const run = (fn: () => void | Promise<void>) => () => {
     setExportOpen(false);
@@ -70,6 +79,10 @@ export function ProjectBar({ controller, onOpen }: { controller: Controller; onO
           }}
         >
           Save as…
+        </Button>
+        <Button type="button" size="sm" variant="ghost" title="Bounce the mix and open it in the waveform editor" onClick={() => void editMix()}>
+          <AudioWaveform className="size-4" />
+          Edit mix
         </Button>
         <div className="relative">
           <Button type="button" size="sm" variant="secondary" aria-expanded={exportOpen} onClick={() => setExportOpen((o) => !o)}>

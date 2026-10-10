@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { getController } from "@/lib/daw/controller";
 import * as ops from "@/lib/daw/ops";
 import { projectEnd } from "@/lib/daw/timeline-math";
+import { takeForStudio } from "@/lib/editor/handoff";
 import { AnalysisSide } from "./analysis-side";
 import { IdleScreen } from "./idle-screen";
 import { ProjectBar } from "./project-bar";
@@ -26,6 +27,26 @@ export function StudioApp() {
   useEffect(() => {
     void controller.init();
   }, [controller]);
+
+  // Leaving for the editor unmounts the studio; don't leave it playing underneath.
+  useEffect(
+    () => () => {
+      if (controller.engine.playing) controller.engine.pause();
+    },
+    [controller],
+  );
+
+  // Audio sent over from the AudioMass editor ("Analyse in Studio" / "Add as track").
+  useEffect(() => {
+    if (!cs.ready) return;
+    const incoming = takeForStudio();
+    if (!incoming) return;
+    if (incoming.mode === "track" && controller.store.getState().project) {
+      void controller.addAudioFile(incoming.file, controller.engine.currentTime());
+    } else {
+      void controller.importFile(incoming.file);
+    }
+  }, [cs.ready, controller]);
 
   const onFiles = useCallback(
     (files: FileList | File[]) => {
@@ -49,7 +70,7 @@ export function StudioApp() {
 
   const root = (children: React.ReactNode) => (
     <div
-      className="relative flex min-h-dvh flex-col bg-background text-foreground"
+      className="relative flex min-h-[calc(100dvh-var(--shell-h))] flex-col bg-background text-foreground"
       onDragEnter={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
         dragDepth.current++;
@@ -79,7 +100,7 @@ export function StudioApp() {
 
   if (!cs.ready) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-background text-sm text-muted-foreground" role="status">
+      <div className="flex min-h-[calc(100dvh-var(--shell-h))] items-center justify-center bg-background text-sm text-muted-foreground" role="status">
         Loading studio…
       </div>
     );

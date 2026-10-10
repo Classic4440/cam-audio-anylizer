@@ -6,3 +6,6 @@ dist
 .tanstack
 *.log
 .node_modules.lock
+
+# AudioMass vendored under public/audiomass needs its dist/ folder tracked
+!public/audiomass/dist
